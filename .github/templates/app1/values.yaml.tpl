@@ -16,20 +16,20 @@ httproute:
   gateway:
     name: main-gateway
     namespace: default
-  host: app1.chetan.local
+  host: ${APP1_HOST}
   path: /
   pathType: PathPrefix
 
 configEnv:
   APP_NAME: App 1
-  ENVIRONMENT: production
-  BRANCH: main
+  ENVIRONMENT: ${ENVIRONMENT}
+  BRANCH: ${BRANCH}
   FEATURE_ENABLED: "true"
 
 configFile:
   hello.sh: |
     #!/bin/sh
-    echo "Hello from main (production)"
+    echo "Hello from ${BRANCH} (${ENVIRONMENT})"
     echo "Current time: $(date)"
 
 externalSecrets:

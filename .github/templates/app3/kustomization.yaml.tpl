@@ -1,7 +1,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: main
+namespace: ${NAMESPACE}
 
 resources:
   - ../../../apps/app3
@@ -15,11 +15,11 @@ patches:
     patch: |-
       - op: replace
         path: /spec/hostnames/0
-        value: app3.chetan.local
+        value: ${APP3_HOST}
 
 labels:
   - includeSelectors: false
     pairs:
       app: app3
-      environment: production
-      branch: main
+      environment: ${ENVIRONMENT}
+      branch: ${BRANCH}

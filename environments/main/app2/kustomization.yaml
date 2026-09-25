@@ -4,18 +4,18 @@ kind: Kustomization
 namespace: main
 
 resources:
-  - ../../../_source/apps/app2
+  - ../../../apps/app2
 
 patches:
   - target:
-      group: networking.k8s.io
+      group: gateway.networking.k8s.io
       version: v1
-      kind: Ingress
-      name: app2-ingress
+      kind: HTTPRoute
+      name: app2-httproute
     patch: |-
       - op: replace
-        path: /spec/rules/0/host
-        value: app2.chetan.com
+        path: /spec/hostnames/0
+        value: app2.chetan.local
 
 labels:
   - includeSelectors: false

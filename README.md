@@ -1,128 +1,91 @@
-# argocd-demo-gitops
+# 🚀 GitOps Workload Applications & Multi-Environment Manifests
 
-Single source of truth ArgoCD watches. **CI in [erchetansoni/argocd-demo](https://github.com/erchetansoni/argocd-demo) is the only thing that writes to this repo.** Don't edit `environments/<branch>/` by hand — your changes will be wiped on the next push to a branch in the source repo.
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-Workloads-blue?logo=kubernetes)](https://kubernetes.io/)
+[![Argo CD](https://img.shields.io/badge/Argo_CD-Managed-orange?logo=argo)](https://argo-cd.readthedocs.io/)
+[![Gateway API](https://img.shields.io/badge/Gateway_API-HTTPRoute-326CE5?logo=kubernetes)](https://gateway-api.sigs.k8s.io/)
 
-This is the *output* side of the GitOps pipeline. The *input* (app code, Helm chart, raw manifests, CI workflow definitions) lives in the source repo.
+This repository (**`erchetansoni/gitops-argocd-apps`**) is the application delivery repository watched by Argo CD. It contains application microservice Helm charts, Kubernetes manifests, and environment-specific overlays (`main`, `dev`, etc.).
+
+Cluster infrastructure, ingress, Gateway API controller, and Argo CD itself are managed in the companion repository:  
+👉 **[`erchetansoni/gitops-argocd-infra`](https://github.com/erchetansoni/gitops-argocd-infra)**
 
 ---
 
-## How this repo gets used
+## 📂 Repository Layout
 
-```mermaid
-flowchart LR
-    SrcRepo["argocd-demo<br/>(source repo)"]:::repo
-    CI["GitHub Actions<br/>deploy.yml"]:::ci
-    Self["argocd-demo-gitops<br/>(this repo)"]:::repo
-    AppSet["ArgoCD<br/>ApplicationSet<br/>(matrix: dirs × apps)"]:::argo
-    K8s["Kubernetes<br/>(one namespace<br/>per branch)"]:::k8s
-
-    SrcRepo -->|developer pushes| CI
-    CI -->|render + commit| Self
-    Self -->|poll| AppSet
-    AppSet -->|generate &<br/>sync| K8s
-
-    classDef repo fill:#dbeafe,stroke:#1e40af,color:#000
-    classDef ci fill:#fce7f3,stroke:#9d174d,color:#000
-    classDef argo fill:#dcfce7,stroke:#166534,color:#000
-    classDef k8s fill:#e0e7ff,stroke:#3730a3,color:#000
+```
+gitops-argocd-apps/
+├── apps/                         # Base application definitions & Helm charts
+│   ├── app1/                     # Full-featured microservice Helm chart
+│   ├── app2/                     # go-httpbin testing service
+│   ├── app3/                     # Whoami / demo request echo service
+│   └── README.md                 # Detailed documentation on apps
+│
+├── environments/                 # Per-environment deployment overlays
+│   ├── main/                     # Production / Main environment overlays
+│   │   ├── app1/                 # Kustomize overlay for app1 (app1.chetan.local)
+│   │   ├── app2/                 # Kustomize overlay for app2 (app2.chetan.local)
+│   │   └── app3/                 # Kustomize overlay for app3 (app3.chetan.local)
+│   │
+│   ├── dev/                      # Development branch environment overlays
+│   │   ├── app1/                 # Kustomize overlay for app1 (app1.dev.chetan.local)
+│   │   ├── app2/                 # Kustomize overlay for app2 (app2.dev.chetan.local)
+│   │   └── app3/                 # Kustomize overlay for app3 (app3.dev.chetan.local)
+│   │
+│   └── README.md                 # Guide to environments and overlays
+└── README.md                     # Root documentation
 ```
 
 ---
 
-## Layout
+## 🛠️ Applications Overview
 
-```
-.
-├── _source/                          # submodule -> argocd-demo (advanced by CI to source HEAD)
-├── applicationset.yaml               # the only ApplicationSet (applied once at setup)
-├── argocd-cm-patch.yaml              # one-time argocd-cm patch (enables kustomize buildOptions)
-└── environments/
-    └── <branch>/                     # one folder per branch, written by CI
-        ├── app1/
-        │   ├── kustomization.yaml    # helmGlobals.chartHome -> ../../../_source/apps
-        │   └── values.yaml           # per-env Helm values
-        ├── app2/
-        │   └── kustomization.yaml    # resources -> ../../../_source/apps/app2 + ingress patch
-        └── app3/
-            └── kustomization.yaml    # same shape as app2
-```
-
-See [environments/README.md](environments/) for the full per-env contract.
+| Application | Technology | Purpose | Subdomain (Main) | Subdomain (Dev) |
+| :--- | :--- | :--- | :--- | :--- |
+| **`app1`** | Helm Chart | Sample demo web application with ConfigMap and environment configuration | `https://app1.chetan.local` | `https://app1.dev.chetan.local` |
+| **`app2`** | Raw Manifests | HTTP Request & Response Service (`mccutchen/go-httpbin`) | `https://app2.chetan.local` | `https://app2.dev.chetan.local` |
+| **`app3`** | Raw Manifests | Echo & Container Inspection Service (`traefik/whoami` / `kuar`) | `https://app3.chetan.local` | `https://app3.dev.chetan.local` |
 
 ---
 
-## How a single Application gets rendered
+## ⚙️ How Argo CD Syncs This Repository
 
-ArgoCD's ApplicationSet generates one Application per **(env × app)** combination — e.g. `qa-app1`, `qa-app2`, `qa-app3`. Each Application's source path is `environments/<branch>/<app>/`. Kustomize then resolves the chart/manifests via the `_source` submodule.
+The root **ApplicationSet** (`branch-environments`) running in the infrastructure cluster watches this repository using a **Matrix Generator**:
 
-| Application | Path read by ArgoCD | What it deploys |
-|---|---|---|
-| `<branch>-app1` | `environments/<branch>/app1/` | Helm chart from `_source/apps/app1`, values from local `values.yaml` |
-| `<branch>-app2` | `environments/<branch>/app2/` | Raw manifests from `_source/apps/app2`, ingress host patched per branch |
-| `<branch>-app3` | `environments/<branch>/app3/` | Raw manifests from `_source/apps/app3`, ingress host patched per branch |
+$$\text{Environments (environments/*)} \times \text{Apps (app1, app2, app3)}$$
 
-All three Applications for one branch deploy into a single namespace named after the branch.
-
----
-
-## Submodule semantics
-
-The `_source` submodule is bumped to the source-repo `GITHUB_SHA` on every CI run (see the source repo's [`.github/workflows/deploy.yml`](https://github.com/erchetansoni/argocd-demo/blob/main/.github/workflows/deploy.yml)). The pointer is **global across all envs** — every Application sees the same source state. If two pushes happen in close succession on different branches, last-write-wins for the submodule pointer.
-
-For a demo this is fine. For per-branch source pinning, swap the ApplicationSet for a [multi-source](https://argo-cd.readthedocs.io/en/stable/user-guide/multiple_sources/) pattern with `targetRevision` per env.
-
-### Manually bumping the submodule
-
-Almost never needed (CI does this), but if you need to refresh against source main:
-
-```bash
-git submodule update --remote _source
-git add _source
-git commit -m "chore: bump _source [skip ci]"
-git push
-```
+1. **Auto-Discovery**:
+   Whenever a new environment directory is added (e.g. `environments/dev`), Argo CD automatically detects it.
+2. **Namespace Isolation**:
+   Apps in `environments/main/` deploy to the `main` namespace. Apps in `environments/dev/` deploy to the `dev` namespace.
+3. **Gateway Routing**:
+   Each application exposes an `HTTPRoute` attached to `main-gateway`. Traefik routes traffic according to the hostnames:
+   * **Main Environment**: `*.chetan.local` (e.g., `app1.chetan.local`)
+   * **Branch Environments**: `*.<branch>.chetan.local` (e.g., `app1.dev.chetan.local`)
 
 ---
 
-## ApplicationSet config
+## ➕ How to Add a New Environment (e.g. `staging`)
 
-This repo holds the canonical [`applicationset.yaml`](applicationset.yaml) so anyone setting up a fresh cluster can `kubectl apply -f` it directly. The shape is a **matrix generator** combining:
+To spin up a complete set of applications for a new branch or stage:
 
-- A **git directory generator** over `environments/*` (one entry per branch).
-- A **list generator** with `app1`, `app2`, `app3`.
-
-Result: `directories × apps` Applications. New branch in source repo → new directory here → 3 new Applications appear automatically. Branch deleted → 3 Applications and their resources auto-prune.
-
----
-
-## Initial bootstrap (one-time)
-
-```bash
-git clone git@github.com:erchetansoni/argocd-demo-gitops.git
-cd argocd-demo-gitops
-
-# Add the source repo as a submodule
-git submodule add -b main https://github.com/erchetansoni/argocd-demo.git _source
-
-# Drop in applicationset.yaml + argocd-cm-patch.yaml (already in this repo).
-git add .
-git commit -m "chore: bootstrap gitops repo [skip ci]"
-git push -u origin main
-
-# Apply the ApplicationSet once to the cluster.
-kubectl apply -f applicationset.yaml
-```
-
-After this, the source repo's CI does all subsequent writes. You should never need to clone this repo again unless debugging.
+1. Create a new folder inside `environments/`:
+   ```bash
+   cp -r environments/dev environments/staging
+   ```
+2. Update the hostnames in the `kustomization.yaml` or `values.yaml` files inside `environments/staging/*/`:
+   * Change `*.dev.chetan.local` to `*.staging.chetan.local`.
+3. Commit and push:
+   ```bash
+   git add environments/staging
+   git commit -m "feat: add staging environment"
+   git push origin main
+   ```
+4. **Argo CD automatically discovers `environments/staging/`**, creates the `staging` namespace, and deploys `staging-app1`, `staging-app2`, and `staging-app3`!
 
 ---
 
-## Files you can safely edit
+## 🤝 Companion Repository
 
-| File | Editable? | Notes |
-|---|---|---|
-| `applicationset.yaml` | ✅ Yes | When you add/remove apps or change destination cluster. Re-`kubectl apply` after pushing. |
-| `argocd-cm-patch.yaml` | ✅ Yes | One-time cluster config. Hand-applied. |
-| `README.md` (this file) | ✅ Yes | Docs. |
-| `_source` submodule pointer | ⚠️ Rarely | CI bumps it. Manual bump only when source repo branches diverge. |
-| `environments/<branch>/**` | ❌ Never | Owned by CI. Edits will be overwritten. |
+For the Kubernetes cluster provisioning, Traefik Gateway API Controller, and Argo CD platform manifests, see:  
+👉 **[`erchetansoni/gitops-argocd-infra`](https://github.com/erchetansoni/gitops-argocd-infra)**

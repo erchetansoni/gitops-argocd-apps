@@ -22,31 +22,30 @@ httproute:
 
 configEnv:
   APP_NAME: App 1
-  ENVIRONMENT: production
-  BRANCH: main
+  ENVIRONMENT: Development
   FEATURE_ENABLED: "true"
 
 configFile:
   hello.sh: |
     #!/bin/sh
-    echo "Hello from main (production)"
+    echo "Hello from the ConfigMap script!"
     echo "Current time: $(date)"
 
-externalSecrets:
-  awsRegion: ap-south-1
-  credentialsSecretName: aws-secretsmanager-credentials
-  env:
-    name: app1-external-secret-env
-    targetSecretName: app1-secret-env
-    awsSecretName: argocd-demo/app-secrets
-  file:
-    name: app1-external-secret-file
-    targetSecretName: app1-secret-file
-    awsSecretName: argocd-demo/app-secret-file
+# externalSecrets:
+#   awsRegion: ap-south-1
+#   credentialsSecretName: aws-secretsmanager-credentials
+#   env:
+#     name: app1-external-secret-env
+#     targetSecretName: app1-secret-env
+#     awsSecretName: argocd-demo/app-secrets
+#   file:
+#     name: app1-external-secret-file
+#     targetSecretName: app1-secret-file
+#     awsSecretName: argocd-demo/app-secret-file
 
 volumes:
   scriptsMountPath: /scripts
-  awsSecretFileMountPath: /aws-secrets
+  # awsSecretFileMountPath: /aws-secrets
   defaultMode: 0755
 
 resources:
